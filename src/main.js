@@ -92,17 +92,38 @@ window.addEventListener('mousemove', (event) => {
 // ------------------------------------------------------------
 // 5. スクロールのループ
 // ------------------------------------------------------------
-// 最初のセクションをコピーして一番下に付け足しておく。
-// コピーが画面の一番上に来た瞬間に先頭へ戻すと、つなぎ目が見えずにループする。
+// 上下の端にコピーを置いて、端に着いたら反対側の同じ見た目の場所へ瞬間移動する。
+//
+//   [見出し4のコピー]  ← 一番上。ここに来たら本物の見出し4へ移動
+//   [見出し1]          ← 最初はここを表示
+//   [見出し2]
+//   [見出し3]
+//   [見出し4]
+//   [見出し1のコピー]  ← 一番下。ここに来たら本物の見出し1へ移動
+//
+// 移動先は見た目がまったく同じなので、つなぎ目が見えずに上にも下にもループする。
 const content = document.getElementById('content');
-const firstSection = content.querySelector('.section');
-const loopSection = firstSection.cloneNode(true);
-content.appendChild(loopSection);
+const sections = content.querySelectorAll('.section');
+const firstSection = sections[0];
+const lastSection = sections[sections.length - 1];
+
+content.append(firstSection.cloneNode(true));  // 一番下に見出し1のコピー
+content.prepend(lastSection.cloneNode(true));  // 一番上に見出し4のコピー
+
+// ブラウザが前回のスクロール位置を復元しないようにして、見出し1から始める
+history.scrollRestoration = 'manual';
+window.scrollTo(0, firstSection.offsetTop);
 
 window.addEventListener('scroll', () => {
-  const loopStart = loopSection.offsetTop;
-  if (window.scrollY >= loopStart) {
-    window.scrollTo(0, window.scrollY - loopStart);
+  // 本物の見出し1から見出し1のコピーまでの距離 = 1周分の長さ
+  const loopLength = lastSection.offsetTop + lastSection.offsetHeight - firstSection.offsetTop;
+  // これ以上下にスクロールできない位置（ブラウザの拡大率によっては小数になるので 1px の余裕を持たせる）
+  const bottom = document.documentElement.scrollHeight - window.innerHeight - 1;
+
+  if (window.scrollY <= 0) {
+    window.scrollTo(0, window.scrollY + loopLength);  // 一番上 → 1周分下へ
+  } else if (window.scrollY >= bottom) {
+    window.scrollTo(0, window.scrollY - loopLength);  // 一番下 → 1周分上へ
   }
 });
 

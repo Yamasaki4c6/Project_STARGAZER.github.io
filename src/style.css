@@ -9,6 +9,9 @@ body {
   background: #000;
   color: #fff;
   font-family: sans-serif;
+  /* 文字をドラッグで選択できないようにする（選択時の青い帯を出さない） */
+  user-select: none;
+  -webkit-user-select: none; /* Safari 用 */
 }
 
 /* キャンバスは画面いっぱいに固定（スクロールしても動かない） */
