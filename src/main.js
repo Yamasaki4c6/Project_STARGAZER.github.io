@@ -1,198 +1,148 @@
+// ============================================================
+//  PROJECT STARGAZER
+//  ・画面中央に cube を置いた 3D の背景（スクロールしても動かない）
+//  ・文字だけがスクロールし、最後まで行くと最初に戻る（ループ）
+//  ・スマホを傾けるとカメラが動き、cube を回り込んで見られる（AR風）
+// ============================================================
+
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
-import { CONFIG } from './config.js';
-import { resolveShape } from './scene/shapes.js';
-import { createParticles } from './scene/particles.js';
-import { createStars } from './scene/stars.js';
-import { scramble } from './ui/scramble.js';
+// ------------------------------------------------------------
+// 1. 3D の準備（レンダラー・シーン・カメラ）
+// ------------------------------------------------------------
+const canvas = document.getElementById('canvas');
 
-const isMobile = matchMedia('(max-width: 768px), (pointer: coarse)').matches;
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const pixelRatio = Math.min(devicePixelRatio, isMobile ? 1.75 : 2);
-document.body.classList.add('is-loading');
+// レンダラー: シーンをキャンバスに描く係
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// ---------- Renderer / Scene ----------
-const canvas = document.getElementById('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(pixelRatio);
-renderer.setClearColor(0x000000, 1);
-
+// シーン: 物を置く空間
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x000000, 0.02);
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+scene.background = new THREE.Color(0x000000);
 
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), CONFIG.bloom.strength, CONFIG.bloom.radius, CONFIG.bloom.threshold);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+// カメラ: (画角, 縦横比, 近くの描画限界, 遠くの描画限界)
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+const cameraBasePosition = new THREE.Vector3(0, 0, 5); // 傾けていないときのカメラ位置
+camera.position.copy(cameraBasePosition);
 
-const stars = createStars(isMobile ? CONFIG.starCount / 2 : CONFIG.starCount, pixelRatio);
-scene.add(stars);
+// ------------------------------------------------------------
+// 2. 仮置きの cube（あとで自作のモデルに差し替える）
+// ------------------------------------------------------------
+const geometry = new THREE.BoxGeometry(1, 1, 1);                     // 形: 1×1×1 の箱
+const material = new THREE.MeshStandardMaterial({ color: 0x888888 }); // 見た目: グレー
+const cube = new THREE.Mesh(geometry, material);
+cube.rotation.set(0.5, 0.7, 0); // 立体に見えるよう少し傾けておく
+scene.add(cube);
 
-const pivot = new THREE.Group(); // パーティクルの置き場所（画面幅で位置を変える）
-scene.add(pivot);
-let particles;
+// MeshStandardMaterial は光がないと真っ黒なので、ライトを置く
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));          // 全体をうっすら照らす光
+const light = new THREE.DirectionalLight(0xffffff, 1.5);   // 一方向から当たる光
+light.position.set(3, 4, 5);
+scene.add(light);
 
-// ---------- Loading ----------
-const manager = new THREE.LoadingManager();
-let real = 1, fake = 0;
-manager.onProgress = (_, loaded, total) => { real = loaded / total; };
-manager.onStart = () => { real = 0; };
-const loaderNum = document.getElementById('loader-num');
-const loaderBar = document.getElementById('loader-bar');
-
-async function load() {
-  await document.fonts.ready; // 文字形状をキャンバスに描く前にフォントを待つ
-  const count = isMobile ? CONFIG.particleCount / 2 : CONFIG.particleCount;
-  const shapes = await Promise.all(CONFIG.shapes.slice(0, 4).map((s) => resolveShape(s, count, manager)));
-  particles = createParticles(shapes, pixelRatio);
-  pivot.add(particles);
-}
-const loaded = load();
-
-const loadStart = performance.now();
-function tickLoader() {
-  fake = Math.min(1, (performance.now() - loadStart) / 1600);
-  const v = Math.min(fake, real);
-  loaderNum.textContent = String(Math.floor(v * 100)).padStart(3, '0');
-  loaderBar.style.width = `${v * 100}%`;
-  return v >= 1;
-}
-
-// ---------- Sections / Scroll ----------
-const sections = [...document.querySelectorAll('.sec')];
-document.getElementById('sec-total').textContent = String(sections.length).padStart(2, '0');
-let scrollTarget = 0, scrollCur = 0;
-// 各セクションの上端位置から「今どのセクションの何割か」を求める（アドレスバーの伸縮に強い）
-let tops = [];
-const measure = () => { tops = sections.map((s) => s.offsetTop); };
-const onScroll = () => {
-  const y = scrollY;
-  let i = 0;
-  while (i < tops.length - 1 && y >= tops[i + 1]) i++;
-  const span = i < tops.length - 1 ? tops[i + 1] - tops[i] : 1;
-  scrollTarget = Math.min(sections.length - 1, i + Math.min(1, Math.max(0, (y - tops[i]) / span)));
-};
-addEventListener('scroll', onScroll, { passive: true });
-
-const io = new IntersectionObserver((entries) => {
-  entries.forEach((e) => {
-    if (!e.isIntersecting) return;
-    e.target.classList.add('is-in');
-    e.target.querySelectorAll('[data-scramble]').forEach((el) => scramble(el));
-    const i = sections.indexOf(e.target);
-    document.getElementById('sec-index').textContent = String(i + 1).padStart(2, '0');
-  });
-}, { threshold: 0.45 });
-
-// カメラのキーフレーム（セクションごと）
-const camKeys = [
-  { pos: [0, 2.6, 4.4], look: [0, 0, 0] },
-  { pos: [3.4, 0.9, 3.2], look: [0, 0, 0] },
-  { pos: [-0.6, 0.2, 4.3], look: [0, 0, 0] },
-  { pos: [0, 0, 5.2], look: [0, 0, 0] },
-];
-const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), look = new THREE.Vector3();
-const ease = (t) => t * t * (3 - 2 * t);
-function cameraAt(s) {
-  const i = Math.min(camKeys.length - 2, Math.floor(s));
-  const t = ease(Math.min(1, s - i));
-  tmpA.fromArray(camKeys[i].pos).lerp(tmpB.fromArray(camKeys[i + 1].pos), t);
-  look.fromArray(camKeys[i].look).lerp(tmpB.fromArray(camKeys[i + 1].look), t);
-  return tmpA;
-}
-
-// ---------- Pointer / Gyro ----------
-const pointer = new THREE.Vector2(9, 9), parallax = new THREE.Vector2(), parallaxCur = new THREE.Vector2();
-addEventListener('pointermove', (e) => {
-  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  parallax.copy(pointer);
-});
-addEventListener('pointerleave', () => pointer.set(9, 9));
-addEventListener('deviceorientation', (e) => {
-  if (e.gamma == null) return;
-  parallax.set(THREE.MathUtils.clamp(e.gamma / 30, -1, 1), THREE.MathUtils.clamp((e.beta - 45) / 30, -1, 1));
-});
-
-// ---------- HUD ----------
-const raEl = document.getElementById('ra'), decEl = document.getElementById('dec');
-const progEl = document.getElementById('progress'), cdEl = document.getElementById('countdown');
-const pad = (n) => String(Math.floor(n)).padStart(2, '0');
-function updateHUD(s, t) {
-  const ra = (s * 5.3 + t * 0.002) % 24;
-  raEl.textContent = `${pad(ra)}h ${pad((ra % 1) * 60)}m ${pad((ra * 60 % 1) * 60)}s`;
-  const dec = Math.sin(s * 0.9 + 0.3) * 62;
-  decEl.textContent = `${dec < 0 ? '−' : '+'}${pad(Math.abs(dec))}° ${pad((Math.abs(dec) % 1) * 60)}′ ${pad((Math.abs(dec) * 60 % 1) * 60)}″`;
-  progEl.style.width = `${(s / (sections.length - 1)) * 100}%`;
-  if (CONFIG.eventDate) {
-    const ms = Math.max(0, new Date(CONFIG.eventDate) - Date.now());
-    cdEl.textContent = `${pad(ms / 864e5)}:${pad(ms / 36e5 % 24)}:${pad(ms / 6e4 % 60)}:${pad(ms / 1e3 % 60)}`;
-  }
-}
-
-// ---------- Resize ----------
+// ------------------------------------------------------------
+// 3. 画面サイズに合わせる
+// ------------------------------------------------------------
 function resize() {
-  const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false);
-  composer.setSize(w, h);
-  bloom.resolution.set(w * (isMobile ? 0.5 : 1), h * (isMobile ? 0.5 : 1));
-  camera.aspect = w / h;
-  // 縦長画面ではオブジェクトが小さくなりすぎないよう画角を広げる
-  camera.fov = w / h < 0.8 ? 60 : 45;
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  // 横長: 右寄せ / 縦長: 上寄せ（下にテキストが来るため）
-  if (w / h > 1.1) { pivot.position.set(1.2, 0, 0); pivot.scale.setScalar(1); }
-  else { pivot.position.set(0, 1.0, 0); pivot.scale.setScalar(0.8); }
-  measure();
-  onScroll();
 }
-addEventListener('resize', resize);
+window.addEventListener('resize', resize);
 resize();
 
-// ---------- Loop ----------
-const clock = new THREE.Timer();
-let started = false;
-function frame() {
-  clock.update();
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const t = clock.getElapsed();
+// ------------------------------------------------------------
+// 4. スマホの傾き（AR風の視差）
+// ------------------------------------------------------------
+// tilt.x / tilt.y は -1〜1 の値。傾きに応じてカメラをずらす。
+const tilt = { x: 0, y: 0 };
 
-  if (!started && tickLoader() && particles) {
-    started = true;
-    document.body.classList.remove('is-loading');
-    document.getElementById('loader').classList.add('is-done');
-    sections.forEach((s) => io.observe(s));
-  }
-
-  scrollCur += (scrollTarget - scrollCur) * (reduced ? 1 : Math.min(1, dt * 4));
-  parallaxCur.lerp(parallax, Math.min(1, dt * 2));
-
-  const c = cameraAt(scrollCur);
-  camera.position.set(c.x + parallaxCur.x * 0.35, c.y + parallaxCur.y * 0.25, c.z);
-  camera.lookAt(look);
-
-  stars.material.uniforms.uTime.value = t;
-  stars.rotation.y = t * 0.004 + scrollCur * 0.15;
-
-  if (particles) {
-    const u = particles.material.uniforms;
-    u.uTime.value = t;
-    u.uMorph.value = scrollCur;
-    u.uPointer.value.copy(pointer);
-    // 最後の文字の形では正面を向くように回転を戻す
-    const spin = reduced ? 0 : THREE.MathUtils.euclideanModulo(t * 0.06 + Math.PI, Math.PI * 2) - Math.PI;
-    particles.rotation.y = spin * (1 - THREE.MathUtils.clamp(scrollCur - 2, 0, 1));
-  }
-
-  updateHUD(scrollCur, t);
-  composer.render();
-  requestAnimationFrame(frame);
+function onOrientation(event) {
+  // gamma: 左右の傾き（度）、beta: 前後の傾き（度）
+  // 手に持ったときの自然な角度（前に45度くらい）を 0 とみなす
+  tilt.x = THREE.MathUtils.clamp(event.gamma / 30, -1, 1);
+  tilt.y = THREE.MathUtils.clamp((event.beta - 45) / 30, -1, 1);
 }
-loaded.catch((e) => console.error(e)).finally(() => { if (real === 0) real = 1; });
-manager.onLoad = () => { real = 1; };
-requestAnimationFrame(frame);
+
+// iPhone は傾きを使うのにユーザーの許可が必要（requestPermission がある）。
+// 許可のダイアログはタップしたときにしか出せないので、最初のタップで求める。
+// Android などは許可がいらないので、すぐに受け取り始める。
+const needsPermission =
+  typeof DeviceOrientationEvent !== 'undefined' &&
+  typeof DeviceOrientationEvent.requestPermission === 'function';
+
+if (needsPermission) {
+  window.addEventListener('click', () => {
+    DeviceOrientationEvent.requestPermission().then((state) => {
+      if (state === 'granted') window.addEventListener('deviceorientation', onOrientation);
+    });
+  }, { once: true });
+} else {
+  window.addEventListener('deviceorientation', onOrientation);
+}
+
+// PC で確認するとき用: マウスの位置を傾きの代わりに使う
+window.addEventListener('mousemove', (event) => {
+  tilt.x = (event.clientX / window.innerWidth) * 2 - 1;
+  tilt.y = (event.clientY / window.innerHeight) * 2 - 1;
+});
+
+// ------------------------------------------------------------
+// 5. スクロールのループ
+// ------------------------------------------------------------
+// 最初のセクションをコピーして一番下に付け足しておく。
+// コピーが画面の一番上に来た瞬間に先頭へ戻すと、つなぎ目が見えずにループする。
+const content = document.getElementById('content');
+const firstSection = content.querySelector('.section');
+const loopSection = firstSection.cloneNode(true);
+content.appendChild(loopSection);
+
+window.addEventListener('scroll', () => {
+  const loopStart = loopSection.offsetTop;
+  if (window.scrollY >= loopStart) {
+    window.scrollTo(0, window.scrollY - loopStart);
+  }
+});
+
+// ------------------------------------------------------------
+// 6. 読み込み画面（数字だけ）
+// ------------------------------------------------------------
+// LoadingManager を GLTFLoader などに渡すと、読み込みの進み具合がここに届く。
+// 例: new GLTFLoader(loadingManager).load('models/xxx.glb', (gltf) => { ... });
+// 今は読み込むファイルがないので、下の showPage() ですぐ消している。
+const loadingEl = document.getElementById('loading');
+const loadingManager = new THREE.LoadingManager();
+
+loadingManager.onProgress = (url, loaded, total) => {
+  loadingEl.textContent = Math.round((loaded / total) * 100);
+};
+loadingManager.onLoad = showPage;
+
+function showPage() {
+  loadingEl.textContent = 100;
+  loadingEl.classList.add('hidden');
+}
+showPage(); // ← モデルを読み込むようになったら、この行は消す
+
+// ------------------------------------------------------------
+// 7. 毎フレームの処理
+// ------------------------------------------------------------
+const cameraTarget = new THREE.Vector3();
+
+function animate() {
+  // 傾きの分だけずらした位置を目標にする
+  cameraTarget.set(
+    cameraBasePosition.x + tilt.x * 2,
+    cameraBasePosition.y - tilt.y * 2,
+    cameraBasePosition.z
+  );
+  // いきなり飛ばずに少しずつ近づける（0.05 = 1フレームで残りの5%進む）
+  camera.position.lerp(cameraTarget, 0.05);
+  camera.lookAt(cube.position); // 常に cube の方を向く
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
