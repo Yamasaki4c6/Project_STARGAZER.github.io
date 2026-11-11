@@ -1,8 +1,8 @@
 // ============================================================
 //  PROJECT STARGAZER
-//  ・画面中央に cube を置いた 3D の背景（スクロールしても動かない）
+//  ・100個の粒が中心のまわりを回る 3D の背景（スクロールしても動かない）
 //  ・文字だけがスクロールし、最後まで行くと最初に戻る（ループ）
-//  ・スマホを傾けるとカメラが動き、cube を回り込んで見られる（AR風）
+//  ・スマホを傾けるとカメラが動き、粒を回り込んで見られる（AR風）
 // ============================================================
 
 import * as THREE from 'three';
@@ -22,17 +22,33 @@ scene.background = new THREE.Color(0x000000);
 
 // カメラ: (画角, 縦横比, 近くの描画限界, 遠くの描画限界)
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-const cameraBasePosition = new THREE.Vector3(0, 0, 5); // 傾けていないときのカメラ位置
+const cameraBasePosition = new THREE.Vector3(0, 1.5, 4.5); // 傾けていないときのカメラ位置（少し上から見下ろす）
 camera.position.copy(cameraBasePosition);
 
 // ------------------------------------------------------------
-// 2. 仮置きの cube（あとで自作のモデルに差し替える）
+// 2. 中心のまわりを回る 100 個の粒（仮置き。あとで自作のモデルに差し替える）
 // ------------------------------------------------------------
-const geometry = new THREE.BoxGeometry(1, 1, 1);                     // 形: 1×1×1 の箱
-const material = new THREE.MeshStandardMaterial({ color: 0x888888 }); // 見た目: グレー
-const cube = new THREE.Mesh(geometry, material);
-cube.rotation.set(0.5, 0.7, 0); // 立体に見えるよう少し傾けておく
-scene.add(cube);
+const PARTICLE_COUNT = 100;
+
+// 形と見た目は全部の粒で同じものを使い回す（1つ作れば足りる）
+const particleGeometry = new THREE.BoxGeometry(0.06, 0.06, 0.06);              // 小さな箱
+const particleMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // グレー
+
+// 粒ごとの情報（Mesh と、円運動に使う値）を入れておく配列
+const particles = [];
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const mesh = new THREE.Mesh(particleGeometry, particleMaterial);
+  scene.add(mesh);
+
+  particles.push({
+    mesh: mesh,
+    radius: 0.5 + Math.random() * 1.0,       // 回る円の半径（0.5〜1.5）
+    angle: Math.random() * Math.PI * 2,      // 円の上のスタート位置（0〜360度をラジアンで）
+    speed: 0.2 + Math.random() * 0.3,        // 1秒あたりに進む角度（ラジアン）
+    height: (Math.random() - 0.5) * 1.0,     // 上下の位置（-0.5〜0.5）
+  });
+}
 
 // MeshStandardMaterial は光がないと真っ黒なので、ライトを置く
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));          // 全体をうっすら照らす光
@@ -151,8 +167,24 @@ showPage(); // ← モデルを読み込むようになったら、この行は�
 // 7. 毎フレームの処理
 // ------------------------------------------------------------
 const cameraTarget = new THREE.Vector3();
+const center = new THREE.Vector3(0, 0, 0); // 粒が回る中心。カメラはここを見る
+const clock = new THREE.Timer();            // 前のフレームからの経過時間を測る
 
 function animate() {
+  clock.update();
+  const delta = clock.getDelta(); // 前のフレームからの経過秒数
+
+  // 粒を円の上で少しずつ進める
+  // 円の上の位置は (cos(角度) × 半径, sin(角度) × 半径) で求められる
+  for (const p of particles) {
+    p.angle += p.speed * delta;
+    p.mesh.position.set(
+      Math.cos(p.angle) * p.radius,  // 横
+      p.height,                      // 高さ（変えない）
+      Math.sin(p.angle) * p.radius   // 奥行き
+    );
+  }
+
   // 傾きの分だけずらした位置を目標にする
   cameraTarget.set(
     cameraBasePosition.x + tilt.x * 2,
@@ -161,7 +193,7 @@ function animate() {
   );
   // いきなり飛ばずに少しずつ近づける（0.05 = 1フレームで残りの5%進む）
   camera.position.lerp(cameraTarget, 0.05);
-  camera.lookAt(cube.position); // 常に cube の方を向く
+  camera.lookAt(center); // 常に中心の方を向く
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
