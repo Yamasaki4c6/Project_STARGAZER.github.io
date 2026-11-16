@@ -5,6 +5,14 @@
   box-sizing: border-box;
 }
 
+/* スクロールバーを隠す（スクロール自体はできる） */
+html {
+  scrollbar-width: none; /* Firefox・新しい Chrome / Edge 用 */
+}
+html::-webkit-scrollbar {
+  display: none;         /* Safari・古い Chrome / Edge 用 */
+}
+
 body {
   background: #000;
   color: #fff;
