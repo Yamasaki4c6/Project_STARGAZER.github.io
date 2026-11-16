@@ -1,11 +1,13 @@
 // ============================================================
 //  PROJECT STARGAZER
-//  ・100個の粒が中心のまわりを回る 3D の背景（スクロールしても動かない）
+//  ・画面いっぱいにフラクタルを描く背景（スクロールしても動かない）
 //  ・文字だけがスクロールし、最後まで行くと最初に戻る（ループ）
-//  ・スマホを傾けるとカメラが動き、粒を回り込んで見られる（AR風）
+//  ・スマホを傾けると視点がずれる（AR風）
 // ============================================================
 
 import * as THREE from 'three';
+import vertexShader from './background.vert?raw';   // ?raw = ファイルの中身を文字列として読み込む（Vite の機能）
+import fragmentShader from './background.frag?raw';
 
 // ------------------------------------------------------------
 // 1. 3D の準備（レンダラー・シーン・カメラ）
@@ -13,58 +15,42 @@ import * as THREE from 'three';
 const canvas = document.getElementById('canvas');
 
 // レンダラー: シーンをキャンバスに描く係
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ canvas });
 
-// シーン: 物を置く空間
+// 解像度の倍率。このシェーダーは 1 ピクセルごとに 100×7×3 回ほどループするのでとても重い。
+// 0.5 にすると縦横半分（ピクセル数は 1/4）で計算し、CSS で画面いっぱいに引き伸ばす。
+// 重ければ下げる、軽ければ上げる。
+const RENDER_SCALE = 0.5;
+renderer.setPixelRatio(RENDER_SCALE);
+
+// 背景は画面に貼り付けた板 1 枚なので、遠近のあるカメラは使わない
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
-
-// カメラ: (画角, 縦横比, 近くの描画限界, 遠くの描画限界)
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-const cameraBasePosition = new THREE.Vector3(0, 1.5, 4.5); // 傾けていないときのカメラ位置（少し上から見下ろす）
-camera.position.copy(cameraBasePosition);
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
 // ------------------------------------------------------------
-// 2. 中心のまわりを回る 100 個の粒（仮置き。あとで自作のモデルに差し替える）
+// 2. 背景のシェーダー（中身は src/background.frag）
 // ------------------------------------------------------------
-const PARTICLE_COUNT = 100;
+// uniform = JavaScript からシェーダーに渡す値
+const uniforms = {
+  uTime: { value: 0 },                          // 経過時間（秒）。Shadertoy の iTime
+  uResolution: { value: new THREE.Vector2() },  // 描画するピクセル数。Shadertoy の iResolution
+  uTilt: { value: new THREE.Vector2() },        // スマホの傾き（-1〜1）
+};
 
-// 形と見た目は全部の粒で同じものを使い回す（1つ作れば足りる）
-const particleGeometry = new THREE.BoxGeometry(0.06, 0.06, 0.06);              // 小さな箱
-const particleMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // グレー
-
-// 粒ごとの情報（Mesh と、円運動に使う値）を入れておく配列
-const particles = [];
-
-for (let i = 0; i < PARTICLE_COUNT; i++) {
-  const mesh = new THREE.Mesh(particleGeometry, particleMaterial);
-  scene.add(mesh);
-
-  particles.push({
-    mesh: mesh,
-    radius: 0.5 + Math.random() * 1.0,       // 回る円の半径（0.5〜1.5）
-    angle: Math.random() * Math.PI * 2,      // 円の上のスタート位置（0〜360度をラジアンで）
-    speed: 0.2 + Math.random() * 0.3,        // 1秒あたりに進む角度（ラジアン）
-    height: (Math.random() - 0.5) * 1.0,     // 上下の位置（-0.5〜0.5）
-  });
-}
-
-// MeshStandardMaterial は光がないと真っ黒なので、ライトを置く
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));          // 全体をうっすら照らす光
-const light = new THREE.DirectionalLight(0xffffff, 1.5);   // 一方向から当たる光
-light.position.set(3, 4, 5);
-scene.add(light);
+// 縦横 2×2 の板 = ちょうど画面全体を覆う大きさ（座標が -1〜1 なので）
+const background = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms })
+);
+scene.add(background);
 
 // ------------------------------------------------------------
 // 3. 画面サイズに合わせる
 // ------------------------------------------------------------
 function resize() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  renderer.setSize(width, height, false);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  // 実際に描画しているピクセル数（画面サイズ × RENDER_SCALE）をシェーダーに教える
+  renderer.getDrawingBufferSize(uniforms.uResolution.value);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -72,7 +58,7 @@ resize();
 // ------------------------------------------------------------
 // 4. スマホの傾き（AR風の視差）
 // ------------------------------------------------------------
-// tilt.x / tilt.y は -1〜1 の値。傾きに応じてカメラをずらす。
+// tilt.x / tilt.y は -1〜1 の値。傾きに応じて視点をずらす。
 const tilt = { x: 0, y: 0 };
 
 function onOrientation(event) {
@@ -166,34 +152,14 @@ showPage(); // ← モデルを読み込むようになったら、この行は�
 // ------------------------------------------------------------
 // 7. 毎フレームの処理
 // ------------------------------------------------------------
-const cameraTarget = new THREE.Vector3();
-const center = new THREE.Vector3(0, 0, 0); // 粒が回る中心。カメラはここを見る
-const clock = new THREE.Timer();            // 前のフレームからの経過時間を測る
+const clock = new THREE.Timer(); // 経過時間を測る
 
 function animate() {
   clock.update();
-  const delta = clock.getDelta(); // 前のフレームからの経過秒数
+  uniforms.uTime.value = clock.getElapsed();
 
-  // 粒を円の上で少しずつ進める
-  // 円の上の位置は (cos(角度) × 半径, sin(角度) × 半径) で求められる
-  for (const p of particles) {
-    p.angle += p.speed * delta;
-    p.mesh.position.set(
-      Math.cos(p.angle) * p.radius,  // 横
-      p.height,                      // 高さ（変えない）
-      Math.sin(p.angle) * p.radius   // 奥行き
-    );
-  }
-
-  // 傾きの分だけずらした位置を目標にする
-  cameraTarget.set(
-    cameraBasePosition.x + tilt.x * 2,
-    cameraBasePosition.y - tilt.y * 2,
-    cameraBasePosition.z
-  );
-  // いきなり飛ばずに少しずつ近づける（0.05 = 1フレームで残りの5%進む）
-  camera.position.lerp(cameraTarget, 0.05);
-  camera.lookAt(center); // 常に中心の方を向く
+  // 傾きにいきなり飛ばず、少しずつ近づける（0.05 = 1フレームで残りの5%進む）
+  uniforms.uTilt.value.lerp(tilt, 0.05);
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
