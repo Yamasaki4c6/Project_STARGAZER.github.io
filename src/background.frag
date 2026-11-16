@@ -25,6 +25,8 @@ mat2 rot(float a) {
 void main() {
   // 画面座標の正規化
   vec2 uv = (0.5 * uResolution - gl_FragCoord.xy) / uResolution.y;
+  // 横のピクセル数が奇数だと、画面中央の列で uv.x がちょうど 0 になり白い縦線が出るので、ほんの少しずらす
+  uv.x += 0.0001;
   vec3 col = vec3(0.0);
   float t = uStartT;
 

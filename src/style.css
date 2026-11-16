@@ -53,42 +53,17 @@ body {
   position: relative;
 }
 
-/* 1セクション = 画面1枚分の高さ */
+/* 1セクション = 画面1枚分の高さ。文字は縦横とも中央 */
 .section {
   height: 100vh;
   padding: 24px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
 }
 
 .section h2 {
   font-size: 32px;
-  margin-bottom: 12px;
-}
-
-/* 背景のパラメータを変えるスライダー。右下に固定 */
-#controls {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  z-index: 5;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.6);
-  font-size: 12px;
-}
-
-#controls label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-#controls input {
-  width: 120px;
-}
-
-/* 名前の幅をそろえて、スライダーの位置を縦に並べる */
-#controls label span:first-child {
-  width: 7em;
+  color: #000; /* 黒字 */
 }
