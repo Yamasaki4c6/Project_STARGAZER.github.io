@@ -35,6 +35,11 @@ const uniforms = {
   uTime: { value: 0 },                          // 経過時間（秒）。Shadertoy の iTime
   uResolution: { value: new THREE.Vector2() },  // 描画するピクセル数。Shadertoy の iResolution
   uTilt: { value: new THREE.Vector2() },        // スマホの傾き（-1〜1）
+  // ↓ 見た目の数値。スライダーで変えられる（「8. パラメータのスライダー」を参照）
+  uStartT: { value: 0.8 },       // レイの出発位置
+  uSteps: { value: 10 },         // フラクタルの繰り返し回数
+  uTimeDivider: { value: 8.0 },  // 時間を割る数（大きいほどゆっくり）
+  uColorFreq: { value: 0.2 },    // 色の変化の細かさ
 };
 
 // 縦横 2×2 の板 = ちょうど画面全体を覆う大きさ（座標が -1〜1 なので）
@@ -165,3 +170,49 @@ function animate() {
   requestAnimationFrame(animate);
 }
 animate();
+
+// ------------------------------------------------------------
+// 8. パラメータのスライダー
+// ------------------------------------------------------------
+// true: いつも表示する / false: URL の末尾に ?debug を付けたときだけ表示する
+const SHOW_CONTROLS = true;
+
+// スライダーにする uniform の一覧。ここに1行足せばスライダーが1つ増える
+const controls = [
+  { label: '開始位置', uniform: 'uStartT',      min: 0.1, max: 2.0,  step: 0.01 },
+  { label: '繰り返し', uniform: 'uSteps',       min: 1,   max: 15,   step: 1 },
+  { label: '速さ（割る数）', uniform: 'uTimeDivider', min: 0.4, max: 20,   step: 0.1 },
+  { label: '色の細かさ', uniform: 'uColorFreq',   min: 0.0, max: 2.0,  step: 0.01 },
+];
+
+const showControls = SHOW_CONTROLS || new URLSearchParams(location.search).has('debug');
+const panel = document.getElementById('controls');
+
+if (showControls) {
+  for (const item of controls) {
+    // <label>名前 <input type="range"> 値</label> を組み立てる
+    const label = document.createElement('label');
+    const name = document.createElement('span');
+    const slider = document.createElement('input');
+    const valueText = document.createElement('span');
+
+    name.textContent = item.label;
+    slider.type = 'range';
+    slider.min = item.min;
+    slider.max = item.max;
+    slider.step = item.step;
+    slider.value = uniforms[item.uniform].value; // 今の値から始める
+    valueText.textContent = slider.value;
+
+    // スライダーを動かしたら、その値をシェーダーの uniform に入れる
+    slider.addEventListener('input', () => {
+      uniforms[item.uniform].value = Number(slider.value);
+      valueText.textContent = slider.value;
+    });
+
+    label.append(name, slider, valueText);
+    panel.append(label);
+  }
+} else {
+  panel.remove();
+}
