@@ -10,11 +10,11 @@ uniform float uTime;
 uniform vec2 uResolution;
 uniform vec2 uTilt; // スマホの傾き（-1〜1）。視点をずらすのに使う
 
-// 見た目を決める数値。いじると雰囲気が変わる
-#define START_T        0.8    // レイの出発位置（大きいほど奥から始まる）
-#define FRACTAL_STEPS  10.0   // フラクタルの繰り返し回数（多いほど細かいが重い）
-#define TIME_DIVIDER   8.0    // 時間を割る数（大きいほどゆっくり動く）
-#define COLOR_FREQ     0.2    // 色の変化の細かさ
+// 見た目を決める数値。サイト内のスライダーから変えられる（初期値は src/main.js）
+uniform float uStartT;       // レイの出発位置（大きいほど奥から始まる）
+uniform float uSteps;        // フラクタルの繰り返し回数（多いほど細かいが重い）
+uniform float uTimeDivider;  // 時間を割る数（大きいほどゆっくり動く）
+uniform float uColorFreq;    // 色の変化の細かさ
 
 // 2D回転行列を返す関数
 mat2 rot(float a) {
@@ -26,7 +26,7 @@ void main() {
   // 画面座標の正規化
   vec2 uv = (0.5 * uResolution - gl_FragCoord.xy) / uResolution.y;
   vec3 col = vec3(0.0);
-  float t = START_T;
+  float t = uStartT;
 
   // 傾きの分だけ視点（レイの出発点）を横・縦にずらす
   vec2 shift = uTilt * 0.15;
@@ -43,7 +43,7 @@ void main() {
     float c = 0.0;
 
     // フラクタルの生成ループ
-    for (float j = 0.0; j < FRACTAL_STEPS; j++) {
+    for (float j = 0.0; j < uSteps; j++) {
       r = length(z);
       if (r > 5.0) break;
 
@@ -51,7 +51,7 @@ void main() {
       c += dot(z, p);
 
       // 空間をねじる
-      x = z / (r * r) * 6.28318 + vec3(uTime / TIME_DIVIDER);
+      x = z / (r * r) * 6.28318 + vec3(uTime / uTimeDivider);
       for (int k = 0; k < 3; k++) {
         z.xy *= rot(x.z);
         z = z.zxy;
@@ -61,7 +61,7 @@ void main() {
     }
 
     // 色の計算と蓄積
-    vec3 palette = cos(c * COLOR_FREQ * vec3(1.0, 2.0, 3.0) + vec3(c));
+    vec3 palette = cos(c * uColorFreq * vec3(1.0, 2.0, 3.0) + vec3(c));
     col += exp(palette - vec3(60000.0 / scale + 5.3));
 
     // 次のステップへ
