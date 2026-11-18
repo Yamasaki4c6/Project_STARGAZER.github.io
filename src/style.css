@@ -67,3 +67,9 @@ body {
   font-size: 32px;
   color: #000; /* 黒字 */
 }
+
+/* リンクも見出しと同じ見た目にする（青字・下線を消す） */
+.section h2 a {
+  color: inherit;
+  text-decoration: none;
+}
