@@ -33,7 +33,7 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // スマホかどうか（指で操作する画面ならスマホとみなす）
 const isPhone = window.matchMedia('(pointer: coarse)').matches;
 
-// 開始位置: 最初は START_T_FROM。タップすると START_T_DURATION 秒かけて START_T_TO へ
+// 開始位置: 開いた瞬間は START_T_FROM。START_T_DURATION 秒かけて自動で START_T_TO へ
 const START_T_FROM = 2.0;
 const START_T_TO = 0.1;
 const START_T_DURATION = 5;
@@ -48,7 +48,7 @@ const uniforms = {
   uResolution: { value: new THREE.Vector2() },  // 描画するピクセル数。Shadertoy の iResolution
   uTilt: { value: new THREE.Vector2() },        // スマホの傾き（-1〜1）
   // ↓ 見た目の数値
-  uStartT: { value: START_T_FROM },  // レイの出発位置。タップで動く（「7. タップ」を参照）
+  uStartT: { value: START_T_FROM },  // レイの出発位置。開くと自動で動く（「9. 毎フレームの処理」を参照）
   uSteps: { value: isPhone ? 7 : 11 }, // フラクタルの繰り返し回数。スマホは軽めにする
   uTimeDivider: { value: 4.9 },      // 時間を割る数（大きいほどゆっくり）。固定
   uColorFreq: { value: COLOR_MIN },  // 色の変化の細かさ。スクロールで動く（「8. スクロール」を参照）
@@ -171,21 +171,20 @@ function showPage() {
 showPage(); // ← モデルを読み込むようになったら、この行は消す
 
 // ------------------------------------------------------------
-// 7. タップで開始位置を動かす
+// 7. カウントダウン
 // ------------------------------------------------------------
-let tapTime = null; // タップした時刻（ミリ秒）。まだタップしていなければ null
+// 0 になる日時。末尾の +09:00 は「日本時間」という意味（海外の端末で開いても同じ瞬間に 0 になる）
+const COUNTDOWN_END = new Date('2026-12-01T17:00:00+09:00').getTime();
 
-window.addEventListener('click', () => {
-  if (tapTime === null) tapTime = performance.now(); // 最初のタップだけ受け付ける
-});
+// 数字を書き込む見出し（ループ用のコピーも含めたいので、コピーを足した後で探す）
+const countdownEls = document.querySelectorAll('.countdown');
 
-function updateStartT() {
-  if (tapTime === null) return;
-  // タップしてからの経過割合（0 → 1）。5秒たったら 1 で止める
-  const progress = Math.min((performance.now() - tapTime) / 1000 / START_T_DURATION, 1);
-  // 動き始めと終わりをなめらかにする（smoothstep: 0→1 を S字カーブにする）
-  const eased = progress * progress * (3 - 2 * progress);
-  uniforms.uStartT.value = START_T_FROM + (START_T_TO - START_T_FROM) * eased;
+function updateCountdown() {
+  // 残り秒数。Date.now() は今の時刻（ミリ秒）。過ぎたら 0 で止める
+  const seconds = Math.max((COUNTDOWN_END - Date.now()) / 1000, 0);
+  // toFixed(2) = 小数点第二位まで表示（例: 518400.00）
+  const text = seconds.toFixed(2);
+  countdownEls.forEach((el) => { el.textContent = text; });
 }
 
 // ------------------------------------------------------------
@@ -205,11 +204,21 @@ function updateColorFreq() {
 // ------------------------------------------------------------
 const clock = new THREE.Timer(); // 経過時間を測る
 
+// 開始位置を動かす（タップは不要。ページを開いた時点から数える）
+function updateStartT() {
+  // 開いてからの経過割合（0 → 1）。5秒たったら 1 で止める
+  const progress = Math.min(clock.getElapsed() / START_T_DURATION, 1);
+  // 動き始めと終わりをなめらかにする（smoothstep: 0→1 を S字カーブにする）
+  const eased = progress * progress * (3 - 2 * progress);
+  uniforms.uStartT.value = START_T_FROM + (START_T_TO - START_T_FROM) * eased;
+}
+
 function animate() {
   clock.update();
   uniforms.uTime.value = clock.getElapsed();
 
   updateStartT();
+  updateCountdown();
   updateColorFreq();
 
   // 傾きにいきなり飛ばず、少しずつ近づける（0.05 = 1フレームで残りの5%進む）

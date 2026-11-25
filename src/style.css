@@ -20,6 +20,8 @@ body {
   /* 文字をドラッグで選択できないようにする（選択時の青い帯を出さない） */
   user-select: none;
   -webkit-user-select: none; /* Safari 用 */
+  /* 指で触ってできるのは縦スクロールだけにする（ダブルタップやピンチでの拡大をしない） */
+  touch-action: pan-y;
 }
 
 /* キャンバスは画面いっぱいに固定（スクロールしても動かない） */
@@ -66,10 +68,6 @@ body {
 .section h2 {
   font-size: 32px;
   color: #000; /* 黒字 */
-}
-
-/* リンクも見出しと同じ見た目にする（青字・下線を消す） */
-.section h2 a {
-  color: inherit;
-  text-decoration: none;
+  /* 数字の幅をそろえる（数字が変わるたびに文字が左右に揺れないように） */
+  font-variant-numeric: tabular-nums;
 }
