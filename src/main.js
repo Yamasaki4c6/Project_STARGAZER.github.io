@@ -182,17 +182,18 @@ const countdownEls = document.querySelectorAll('.countdown');
 // 数字を 2 桁にそろえる（5 → "05"）
 const pad = (n) => String(n).padStart(2, '0');
 
-// 残り時間を「時間:分:秒.1/100秒」で表示する（例: 151:27:45.08）
+// 残り時間を「日:時間:分:秒.1/100秒」で表示する（例: 06:07:27:45.08）
 function updateCountdown() {
   // 残りミリ秒。Date.now() は今の時刻（ミリ秒）。過ぎたら 0 で止める
   const ms = Math.max(COUNTDOWN_END - Date.now(), 0);
 
-  const hours = Math.floor(ms / 3600000);         // 時間（24 を超えても日にせず、そのまま数える）
+  const days = Math.floor(ms / 86400000);         // 日
+  const hours = Math.floor(ms / 3600000) % 24;    // 時間（0〜23）
   const minutes = Math.floor(ms / 60000) % 60;    // 分（0〜59）
   const seconds = Math.floor(ms / 1000) % 60;     // 秒（0〜59）
   const centiseconds = Math.floor(ms / 10) % 100; // 1/100 秒（0〜99）
 
-  const text = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centiseconds)}`;
+  const text = `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centiseconds)}`;
   countdownEls.forEach((el) => { el.textContent = text; });
 }
 
