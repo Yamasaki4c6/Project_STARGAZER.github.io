@@ -67,7 +67,8 @@ body {
 
 .section h2 {
   font-size: 32px;
-  color: #000; /* 黒字 */
-  /* 数字の幅をそろえる（数字が変わるたびに文字が左右に揺れないように） */
-  font-variant-numeric: tabular-nums;
+  color: #fff; /* 白字 */
+  /* 細い等幅フォント（読み込みは index.html）。等幅なので数字が変わっても文字が左右に揺れない */
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 200; /* 200 = ExtraLight（細め） */
 }
