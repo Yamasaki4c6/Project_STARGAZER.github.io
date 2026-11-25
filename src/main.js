@@ -33,7 +33,7 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // スマホかどうか（指で操作する画面ならスマホとみなす）
 const isPhone = window.matchMedia('(pointer: coarse)').matches;
 
-// 開始位置: 開いた瞬間は START_T_FROM。START_T_DURATION 秒かけて自動で START_T_TO へ
+// 開始位置: カウントダウン中は START_T_FROM で止めておき、0 になったら START_T_DURATION 秒かけて START_T_TO へ
 const START_T_FROM = 2.0;
 const START_T_TO = 0.1;
 const START_T_DURATION = 5;
@@ -48,7 +48,7 @@ const uniforms = {
   uResolution: { value: new THREE.Vector2() },  // 描画するピクセル数。Shadertoy の iResolution
   uTilt: { value: new THREE.Vector2() },        // スマホの傾き（-1〜1）
   // ↓ 見た目の数値
-  uStartT: { value: START_T_FROM },  // レイの出発位置。開くと自動で動く（「9. 毎フレームの処理」を参照）
+  uStartT: { value: START_T_FROM },  // レイの出発位置。0 になると動く（「7. カウントダウン」を参照）
   uSteps: { value: isPhone ? 7 : 11 }, // フラクタルの繰り返し回数。スマホは軽めにする
   uTimeDivider: { value: 4.9 },      // 時間を割る数（大きいほどゆっくり）。固定
   uColorFreq: { value: COLOR_MIN },  // 色の変化の細かさ。スクロールで動く（「8. スクロール」を参照）
@@ -179,12 +179,35 @@ const COUNTDOWN_END = new Date('2026-12-01T17:00:00+09:00').getTime();
 // 数字を書き込む見出し（ループ用のコピーも含めたいので、コピーを足した後で探す）
 const countdownEls = document.querySelectorAll('.countdown');
 
+// 数字を 2 桁にそろえる（5 → "05"）
+const pad = (n) => String(n).padStart(2, '0');
+
+// 残り時間を「日:時間:分:秒.1/100秒」で表示する（例: 06:07:27:45.08）
 function updateCountdown() {
-  // 残り秒数。Date.now() は今の時刻（ミリ秒）。過ぎたら 0 で止める
-  const seconds = Math.max((COUNTDOWN_END - Date.now()) / 1000, 0);
-  // toFixed(2) = 小数点第二位まで表示（例: 518400.00）
-  const text = seconds.toFixed(2);
+  // 残りミリ秒。Date.now() は今の時刻（ミリ秒）。過ぎたら 0 で止める
+  const ms = Math.max(COUNTDOWN_END - Date.now(), 0);
+
+  const days = Math.floor(ms / 86400000);         // 日
+  const hours = Math.floor(ms / 3600000) % 24;    // 時間（0〜23）
+  const minutes = Math.floor(ms / 60000) % 60;    // 分（0〜59）
+  const seconds = Math.floor(ms / 1000) % 60;     // 秒（0〜59）
+  const centiseconds = Math.floor(ms / 10) % 100; // 1/100 秒（0〜99）
+
+  const text = `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(centiseconds)}`;
   countdownEls.forEach((el) => { el.textContent = text; });
+}
+
+// 背景が動き出す時刻。ふつうは 0 になった瞬間。
+// 0 を過ぎてから開いた人にも動きが見えるよう、その場合は開いた瞬間にする。
+const startTAt = Math.max(COUNTDOWN_END, Date.now());
+
+// 開始位置を動かす（0 になるまでは START_T_FROM のまま）
+function updateStartT() {
+  // 動き出してからの経過割合（0 → 1）。動き出す前は 0、5秒たったら 1 で止める
+  const progress = THREE.MathUtils.clamp((Date.now() - startTAt) / 1000 / START_T_DURATION, 0, 1);
+  // 動き始めと終わりをなめらかにする（smoothstep: 0→1 を S字カーブにする）
+  const eased = progress * progress * (3 - 2 * progress);
+  uniforms.uStartT.value = START_T_FROM + (START_T_TO - START_T_FROM) * eased;
 }
 
 // ------------------------------------------------------------
@@ -203,15 +226,6 @@ function updateColorFreq() {
 // 9. 毎フレームの処理
 // ------------------------------------------------------------
 const clock = new THREE.Timer(); // 経過時間を測る
-
-// 開始位置を動かす（タップは不要。ページを開いた時点から数える）
-function updateStartT() {
-  // 開いてからの経過割合（0 → 1）。5秒たったら 1 で止める
-  const progress = Math.min(clock.getElapsed() / START_T_DURATION, 1);
-  // 動き始めと終わりをなめらかにする（smoothstep: 0→1 を S字カーブにする）
-  const eased = progress * progress * (3 - 2 * progress);
-  uniforms.uStartT.value = START_T_FROM + (START_T_TO - START_T_FROM) * eased;
-}
 
 function animate() {
   clock.update();
